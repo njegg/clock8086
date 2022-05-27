@@ -4,7 +4,10 @@
 ;       velika za sate
 ;       mala za minute
 ;       najmanja za sekunde
-;   i njihovo pomeranje na ekranu."    
+;   i njihovo pomeranje na ekranu."
+;
+;   Izvorni kod i video:
+;   https://github.com/njegg/clock8086
 ;
 ;   Najbolje pokrenuti u dosbox-u ili necemu slicnom
 ;   Pokretanje u emu8086 je sporo:
