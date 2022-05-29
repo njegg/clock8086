@@ -75,7 +75,7 @@ data segment
     ; template za grafiku sa vezbi
     pozX dw ?
     pozY dw ?          ; pozX i pozY koristicemo za pamcenje (X, Y) pozicije trenutnog znaka, 
-    adresa_graf dw ?        ; adresa_graf ce sadrzati ofsetnu adresu tog znaka u ekranskoj memoriji.
+    adresa_graf dw ?   ; adresa_graf ce sadrzati ofsetnu adresu tog znaka u ekranskoj memoriji.
     sirina dw ?        ; maksimalna sirina i visina
     visina dw ? 
     boja db ?          ; polje boja sadrzace vrednost tekuce boje sa kojom se radi 
@@ -267,6 +267,7 @@ krajPrograma macro
     mov ax, 4c02h
     int 21h
 endm
+
 
 ;------------- procedure i macro-i za simulaciju sat ------------;
 
@@ -1126,6 +1127,8 @@ simuliraj_sat macro sat_x sat_y sat_r
     mov ax, sat_r
     mov r, sat_r            ; r sata = r nacrtanog kruga
     
+    ; zadatak: velika za sate, mala za minute, najmanja za sekunde
+    
     dec ax                  ; kazaljke za sat je malo manja od r
     mov kazaljka_h_r, ax
     
@@ -1167,7 +1170,7 @@ simuliraj_sat macro sat_x sat_y sat_r
                 obrisi_sve_kazaljke
                 smanji_ugao kazaljka_s_ugao 06h
                 
-                mov ax, 054h            
+                mov ax, 05Ah            
                 cmp ax, kazaljka_s_ugao
                 jne petlja_s
                 
@@ -1175,7 +1178,7 @@ simuliraj_sat macro sat_x sat_y sat_r
             
             ; ako je dosla do 90 stepeni, prosao je sat
             ; izadji iz petlje i promeni ugao kazaljke za sate
-            mov ax, 054h
+            mov ax, 05Ah
             cmp ax, kazaljka_m_ugao
             jne petlja_m
             
@@ -1192,7 +1195,69 @@ start:
     mov al, pozadina
     clsColor al
     
-    simuliraj_sat 014h 0Ch 0Ch ; centar ekrana, r = 12
+    ; racunanje ugla kazaljki na osnovu sistemskog vremena
+    ; ch:cl:dh - hh:mm:ss
+    ; ugao za minute/sekunde = ((60 - (m|s)) * 6 + 90) % 360
+    
+    mov ah, 02Ch        ; get system time
+    int 21h             
+    
+    xor ah, ah
+    mov al, dh          ; sekunde
+
+    mov bx, 03Ch        ; 60
+    sub bx, ax          ; 60 - s
+    mov ax, bx
+    mov bx, 06h
+    mul bx              ; * 6
+    add ax, 05Ah        ; + 90
+    mov bx, 0168h
+    div bx              ; / 360, ostatak u dx
+    mov ax, dx          ; uzmi ostatak kao rezultat
+    mov kazaljka_s_ugao, ax
+
+
+    xor ah, ah
+    mov al, cl          ; minuti
+
+    mov bx, 03Ch        ; 60
+    sub bx, ax          ; 60 - m
+    mov ax, bx
+    mov bx, 06h
+    mul bx              ; * 6
+    add ax, 05Ah        ; + 90
+    mov bx, 0168h
+    div bx              ; / 360, ostatak u dx
+    mov ax, dx          ; uzmi ostatak kao rezultat
+    mov kazaljka_m_ugao, ax
+    
+    
+    ; ugao za sate = ((12 - h) * 30 + 90) % 360
+    
+    xor ah, ah
+    mov al, ch
+    
+    mov bx, 0Ch         ; 12
+    
+    cmp al, bl
+    jle pre_podne              
+    
+    ; sati > 12, mora se oduzeti 12 da se dobije 1-12 format
+    sub al, bl
+    
+    pre_podne:          ; s < 12, sad se racuna po formuli
+    sub bl, al          ; 12 - s
+    mov al, bl          
+    mov bx, 01Eh        
+    mul bx              ; * 30
+    add ax, 05Ah        ; + 90
+    mov bx, 0168h       
+    div bx              ; / 360
+    mov ax, dx          ; ostatak kao rezultat
+    mov kazaljka_h_ugao, ax
+    
+    simuliraj_sat 014h 0Ch 0Ch    ; XY centra ekrana i r = 12
+    ; simuliraj_sat 01Ah 0Eh 09h  ; pomeren manji sat
     
     kraj_simulacije:
         cls
