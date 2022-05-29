@@ -4,6 +4,8 @@ Analogni sat implementiran u 8086 asembleru
 
 ### Demo video:
 
+Nekad se desi da je pokret kazaljke previse mali da bi se prikazao na ovoj rezoluciji pa se desi da se ne pomeri uopste ali je i dalje 'precizno'
+
 Sadrzaj videa:
 - 00:00 normalna brzina
 - 00:16 promena na 100x sa 'S'
