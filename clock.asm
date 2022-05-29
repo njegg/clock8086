@@ -42,10 +42,8 @@ data segment
     x dw ?                  ; za iteriranje kroz kvadrat oko kruga
     y dw ?                  ;
     
-    ; TODO fixaj da se koristi samo krajnja_tacka_xy
-    lineBX dw ?        
-    lineBY dw ?         
-    krajnja_tacka_xy dw ?   ; crtanje linije od A do krajnje tacke
+    krajnja_tacka_xy dw ?   ; crtanje linije do krajnje tacke
+                            ; jedan bajt je X drugi Y
     
     centar_kaz_x dw ?       ; centar sata
     centar_kaz_y dw ?
@@ -73,9 +71,9 @@ data segment
     komande_kraj db '              $'
     
     ; template za grafiku sa vezbi
-    pozX dw ?
-    pozY dw ?          ; pozX i pozY koristicemo za pamcenje (X, Y) pozicije trenutnog znaka, 
-    adresa_graf dw ?   ; adresa_graf ce sadrzati ofsetnu adresu tog znaka u ekranskoj memoriji.
+    graf_poz_x dw ?
+    graf_poz_y dw ?          ; graf_poz_x i graf_poz_y koristicemo za pamcenje (X, Y) pozicije trenutnog znaka, 
+    graf_adresa dw ?   ; graf_adresa ce sadrzati ofsetnu adresu tog znaka u ekranskoj memoriji.
     sirina dw ?        ; maksimalna sirina i visina
     visina dw ? 
     boja db ?          ; polje boja sadrzace vrednost tekuce boje sa kojom se radi 
@@ -95,40 +93,40 @@ code segment
 ;------------ template za grafiku sa vezbi ----------------------
 
 ; ovaj makro se koristi za inicijalizaciju ES registra
-macro initGraph
+macro init_graph
      push ax
-     mov ax, 0B800h     ; segmentna adresa_graf graficke memorije postavlja se u ES
+     mov ax, 0B800h     ; segmentna graf_adresa graficke memorije postavlja se u ES
      mov es, ax
      mov sirina, 80     ; maksimalna sirina je 80
      mov visina, 25     ; maksimalna visina je 25
-     mov pozX, 0        
-     mov pozY, 0        
-     mov adresa_graf, 0 ; ofsetna adresa_graf prve pozicije je 0
+     mov graf_poz_x, 0        
+     mov graf_poz_y, 0        
+     mov graf_adresa, 0 ; ofsetna graf_adresa prve pozicije je 0
      mov al, pozadina
      mov boja, al       
      pop ax
 endm  
 
 ; Pomera nas na polje definisano parametrima makroa              
-macro setXY x y ;  4, 4 -> adresa_graf = 648
+macro setXY x y ;  4, 4 -> graf_adresa = 648
      push ax
      push bx
      push dx
      
-	 ; vrednosti se smestaju u pozX i pozY, a nakon toga se racuna adresa_graf tog znaka 
-     ; u ekranskoj memoriji po formuli adresa_graf = pozY*160+pozX*2
+	 ; vrednosti se smestaju u graf_poz_x i graf_poz_y, a nakon toga se racuna graf_adresa tog znaka 
+     ; u ekranskoj memoriji po formuli graf_adresa = graf_poz_y*160+graf_poz_x*2
      mov ax, x
      mov bx, y
-     mov pozX, ax
-     mov pozY, bx
-     mov ax, pozY     
+     mov graf_poz_x, ax
+     mov graf_poz_y, bx
+     mov ax, graf_poz_y     
      mov bx, sirina
      shl bx, 1      ; pomeranje bitova u levo za 1: mnozenje sa 2
      mul bx         ; mnozi bx sa ax
-     mov bx, pozX   
+     mov bx, graf_poz_x   
      shl bx, 1      ; opet pomeranje u levo - mnozenje 
      add ax, bx     ; i na kraju sabiranje
-     mov adresa_graf, ax
+     mov graf_adresa, ax
      
      pop dx
      pop bx
@@ -136,12 +134,12 @@ macro setXY x y ;  4, 4 -> adresa_graf = 648
 endm
 
 ; Postavljanje tekuce boje
-macro setBoja b
+macro set_boja b
      mov boja, b
 endm  
 
 ; Ucitavanje znaka bez prikaza i memorisanja           
-keyPress macro
+key_press macro
     push ax
     mov ah, 08
     int 21h
@@ -149,13 +147,13 @@ keyPress macro
 endm  
 
 ; Ispis znaka na tekucu poziciju ekrana
-; setBoja 17
-; setXY 4, 4 -> adresa_graf = 648
-macro Write c 
+; set_boja 17
+; setXY 4, 4 -> graf_adresa = 648
+macro write c 
      push bx        
      push dx
      
-	 mov bx, adresa_graf
+	 mov bx, graf_adresa
      mov es:[bx], c	   ; 0b800h+648 -> 'X'
      mov dl, boja      ; stavljamo boju prvo u pomocni registar dl
      mov es:[bx+1], dl ; 0b800h+649 -> boja se smesta na adresu odmah posle znaka
@@ -172,7 +170,7 @@ write_string macro str
     push si               ; index karaktera u stringu
     mov si, 0             ; nulti znak stringa je pocetni
     mov ah, boja          ; trenutno postavljena boja
-    mov bx, adresa_graf        ; smestamo trenutnu ofsetnu adresu u bx - ispis se nastavlja tamo gde je adresa_graf!
+    mov bx, graf_adresa        ; smestamo trenutnu ofsetnu adresu u bx - ispis se nastavlja tamo gde je graf_adresa!
 petlja:
     mov al, str[si]       ; iz stringa se uzimaju znakovi redom i smestaju se u al
     cmp al, '$'           ; ako se naidje na $ prelazi se na kraj ispisa
@@ -184,16 +182,17 @@ petlja:
     jmp petlja
 kraj:           
 
-    mov ax, pozX          ; pozicija X se pomera za duzinu stringa
+    mov ax, graf_poz_x          ; pozicija X se pomera za duzinu stringa
     add ax, si
-    mov bx, pozY          ; pozicija Y se upisuje u BX
+    mov bx, graf_poz_y          ; pozicija Y se upisuje u BX
     setXY ax bx
     pop si
     pop bx
     pop ax
 endm 
 
-macro clsColor color
+
+macro cls_color color
    LOCAL petlja
    push bx
    push cx
@@ -209,61 +208,10 @@ petlja:
 endm
 
 macro cls
-    clsColor 7
+    cls_color 7     ; crn ekran
 endm
 
-inttostr proc
-   push ax
-   push bx
-   push cx
-   push dx
-   push si
-   mov bp, sp
-   mov ax, [bp+14] 
-   mov dl, '$'
-   push dx
-   mov si, 10
-petlja2:
-   mov dx, 0
-   div si
-   add dx, 48
-   push dx
-   cmp ax, 0
-   jne petlja2
-   
-   mov bx, [bp+12]
-petlja2a:      
-   pop dx
-   mov [bx], dl
-   inc bx
-   cmp dl, '$'
-   jne petlja2a
-   pop si  
-   pop dx
-   pop cx
-   pop bx
-   pop ax 
-   ret 4
-inttostr endp  
-
-write_int macro n wi_x wi_y
-    push bx
-    push ax
- 
-    push n
-    push offset buf
-    call inttostr
-    mov ax, wi_x
-    mov bx, wi_y
-    setXY ax bx
-    write_string buf
-
-    pop ax
-    pop bx
-endm
-
-; Kraj programa
-krajPrograma macro
+kraj_programa macro
     mov ax, 4c02h
     int 21h
 endm
@@ -275,7 +223,7 @@ endm
 ;-------------- procedure za crtanje kruga ----------------------;
 
 ;----------------------------------------------------------------;
-nacrtajKrug proc
+nacrtaj_krug proc
 ;   prolazak kroz kvadrad 2r*2r sa pocetkom na x-r, y-r
 ;   racunanje distance od centra x,y za svaki pixel
 ;   ako je dist == r, tu je kruznica
@@ -291,7 +239,7 @@ nacrtajKrug proc
 ;       push x      [+6]
 ;       push y      [+4]
 ;       push r      [+2]
-;       call nacrtajKrug
+;       call nacrtaj_krug
 ;----------------------------------------------------------------;
     push bp
     push di
@@ -329,7 +277,7 @@ nacrtajKrug proc
     
     setXY ax, dx        ; postavljanje x,y, u memoriji
     
-    mov bx, adresa_graf  ; pocetak reda kvadrata y
+    mov bx, graf_adresa  ; pocetak reda kvadrata y
     
     whileY:
         push cx ; sacuvaj y
@@ -401,7 +349,7 @@ nacrtajKrug proc
     pop di
     pop bp
     ret 6
-nacrtajKrug endp
+nacrtaj_krug endp
 
 ;----------------------------------------------------------------;
 dist proc
@@ -438,19 +386,19 @@ dist proc
     
     mov ax, [bp+di+4]    ; ah = x1, al = x2
     cmp al, ah
-    jge neTrebaZamenaX  ; x2 je vec veci
+    jge ne_treba_zamena_x  ; x2 je vec veci
     
     xchg al, ah
     
-    neTrebaZamenaX:
+    ne_treba_zamena_x:
     
     mov bx, [bp+di+2]    ; bh = y1, bl = y2
     cmp bl, bh
-    jge neTrebaZamenaY  ; y2 je vec veci
+    jge ne_treba_zamena_y  ; y2 je vec veci
  
     xchg bl, bh
  
-    neTrebaZamenaY:
+    ne_treba_zamena_y:
     
     sub al, ah  ; al = x2 - x1
     sub bl, bh  ; bl = y2 - y1
@@ -468,7 +416,7 @@ dist proc
     
     push 0
     push ax
-    call BSisqrt
+    call bs_isqrt
     pop ax
     
     mov [bp+di+6], ax ; rezultat
@@ -482,7 +430,7 @@ dist proc
 dist endp
 
 ;----------------------------------------------------------------;
-BSisqrt proc
+bs_isqrt proc
 ;   racuna celobrojni kvadratni koren 
 ;   koristeci binary search algoritam
 ;       1. predpostavi da je resenje sqrt(x) u sredini (x/2)
@@ -497,7 +445,7 @@ BSisqrt proc
 ;   koriscenje procedure:
 ;       push 0          ; [+4] ; mesto za rezultat
 ;       push broj       ; [+2]
-;       call BSisqrt
+;       call bs_isqrt
 ;       pop rezultat
 ;       
 ;----------------------------------------------------------------;
@@ -522,15 +470,15 @@ BSisqrt proc
 
         mul ax     ; M * M
         cmp ax, bx  
-        jg  traziLevo   ; M * M >  x, R = M
-        jle traziDesno  ; M * M <= x, L = M
+        jg  trazi_levo   ; M * M >  x, R = M
+        jle trazi_desno  ; M * M <= x, L = M
         
-        traziLevo:
+        trazi_levo:
             pop ax      ; M
             mov di, ax  ; R = M
             jmp provera
             
-        traziDesno:
+        trazi_desno:
             pop ax      ; M
             mov si, ax  ; L = M
             jmp provera
@@ -549,17 +497,17 @@ BSisqrt proc
     pop ax
     pop di
     ret 2
-BSisqrt endp
+bs_isqrt endp
 
 ;----------------- procedure za crtanje kazaljke ----------------;
 
 ;----------------------------------------------------------------;
-nacrtajLiniju proc
+nacrtaj_liniju proc
 ;
 ;   Koristi Brezenhamov algoritam naucen na RG1
 ;
 ;   A   - poctna tacka, za inicijalizaciju tacke C
-;   B   - krajnja tacka, cuva se na steku
+;   B   - krajnja tacka, cuva se u memoriji u krajnja_tacka_xy
 ;   C   - ide od A do krajnja_tacka_xy, u CX registru
 ;   D   - razlika A i krajnja_tacka_xy, u DX registru
 ;   err - odstupanje od linije za tacku C, u AX registru
@@ -572,7 +520,7 @@ nacrtajLiniju proc
 ;       push Ay             [+ 6]
 ;       push Bx             [+ 4]
 ;       push By             [+ 2]
-;       call nacrtajLiniju
+;       call nacrtaj_liniju
 ;
 ;   Todo
 ;       Objasni negaciju DY ??
@@ -593,7 +541,7 @@ nacrtajLiniju proc
     mov cl, [bp+14 +6] ; cl = Ay; Cy na pocetku
     mov ch, [bp+14 +8] ; ch = Ax; Cx na pocetku
     
-    mov krajnja_tacka_xy, bx ; b ce biti na steku zbog nedostatka registara
+    mov krajnja_tacka_xy, bx
 
     ; razlika a i b (dx, dy)
     ; dx i dy trebaju biti absolutna vrednost razlike
@@ -604,7 +552,7 @@ nacrtajLiniju proc
     
     ; Dx, Sx
     cmp bh, ch ; cmp Bx, Ax
-    jl BxManji
+    jl B_x_manji
     
     ; Bx Veci
     mov dh, bh
@@ -616,7 +564,7 @@ nacrtajLiniju proc
     mov bh, 1
     jmp gotovX
     
-    BxManji:
+    B_x_manji:
     mov dh, ch
     sub dh, bh    
     
@@ -626,7 +574,7 @@ nacrtajLiniju proc
     
     ; Dy, Sy
     cmp bl, cl  ; cmp By, Ay
-    jl ByManji 
+    jl B_y_manji 
     
     ; By veci
     mov dl, bl
@@ -635,7 +583,7 @@ nacrtajLiniju proc
     mov bl, 1   ; idemo dole
     jmp gotovY
     
-    ByManji:
+    B_y_manji:
     mov dl, cl
     sub dl, bl
     
@@ -651,31 +599,36 @@ nacrtajLiniju proc
     mov ah, al
     
     petlja:
-        ; probaj w.ch
-        mov b.lineBX, ch
-        mov b.lineBY, cl
-        setXY lineBX, lineBY  ; pocetak linije (tacka A)
-        mov si, adresa_graf
+        push ax         ; backup jer potreban u narednih par linija
+        push cx
         
-        push ax
+        xor ah, ah
+        mov al, ch      ; privremeno Ax u ax za pozivanje setXY
+        xor ch, ch      ; treba samo Ay iz cl za setXY
+        
+        setXY ax cx  ; pocetak linije (tacka A)
+        mov si, graf_adresa
+        
         mov ax, [bp+14 +10]
         mov es:[si], ah
         mov es:[si+1], al
+        
+        pop cx
         pop ax
         
         shl al, 1       ; al = err*2, ah = err
 
         cmp al, dl      ; cmp err*2, -dy  
-        jle neMenjajX
+        jle ne_menjaj_x
         add ch, bh      ; korak po x
         add ah, dl              
-        neMenjajX:
+        ne_menjaj_x:
         
         cmp al, dh
-        jge neMenjajY
+        jge ne_menjaj_y
         add cl, bl
         add ah, dh
-        neMenjajY:
+        ne_menjaj_y:
         
         mov al, ah      ; nova vrednost za err
         
@@ -690,7 +643,7 @@ nacrtajLiniju proc
     pop di
     pop bp
     ret 0Ah
-nacrtajLiniju endp
+nacrtaj_liniju endp
 
 ;----------------------------------------------------------------;
 sin_approx proc
@@ -937,20 +890,20 @@ endm
 ;----------- Makroi za pozivanje procedura za crtanje -----------;
 
 
-nacrtajKrugM macro x y r
+nacrtaj_krugM macro x y r
     push x             ; krug_centar_x
     push y             ; krug_centar_y
     push r             ; r
-    call nacrtajKrug
+    call nacrtaj_krug
 endm
 
-nacrtajLinijuM macro A_x A_y B_x B_y char_and_color
+nacrtaj_linijuM macro A_x A_y B_x B_y char_and_color
     push char_and_color
     push A_x
     push A_y
     push B_x
     push B_y
-    call nacrtajLiniju
+    call nacrtaj_liniju
 endm
 
 nacrtaj_kazaljku macro k_ugao k_r znak_i_boja
@@ -977,7 +930,7 @@ nacrtaj_kazaljku macro k_ugao k_r znak_i_boja
     sub ax, bx                  ; y kraja u odnosu na pocetak kaz
     
     ; nacrtaj kazaljku od pocetka do kraja sa znak_i_boja
-    nacrtajLinijuM centar_kaz_x centar_kaz_y dx ax cx
+    nacrtaj_linijuM centar_kaz_x centar_kaz_y dx ax cx
     
     pop cx
     pop bx
@@ -1072,7 +1025,7 @@ ispis_jedne_komande macro txt_x txt_y dugme opis
     setXY ax bx
     
     mov al, 04Eh     ; crvena pozadina, zuti karakter
-    setBoja al
+    set_boja al
     write_string dugme
     
     mov ax, txt_x
@@ -1080,12 +1033,12 @@ ispis_jedne_komande macro txt_x txt_y dugme opis
     
     setXY ax bx
     mov al, 03Eh     ; cyan pozadina, zuti karakter
-    setBoja al
+    set_boja al
     write_string opis
     
     mov al, 04Eh     ; crvena pozadina, zuti karakter
-    setBoja al
-    Write ' '
+    set_boja al
+    write ' '
     
     pop bx
 endm
@@ -1093,13 +1046,13 @@ endm
 ispis_komandi macro
     setXY 2 1
     mov al, 04Eh
-    setBoja al
+    set_boja al
     write_string komande_txt
     ispis_jedne_komande 2 2 s_dugme s_opis
     ispis_jedne_komande 2 3 ESC_dugme ESC_opis
     
     setXY               2 4
-    setBoja al
+    set_boja al
     write_string komande_kraj    ; dno tabele
 endm
 
@@ -1138,7 +1091,7 @@ simuliraj_sat macro sat_x sat_y sat_r
     dec ax                  ; najmanja kazaljka
     mov kazaljka_s_r, ax
     
-    nacrtajKrugM krug_centar_x krug_centar_y r
+    nacrtaj_krugM krug_centar_x krug_centar_y r
     ispis_komandi
     
     petlja_h:
@@ -1191,9 +1144,9 @@ start:
     mov ax, data
     mov ds, ax        
     
-    initGraph
+    init_graph
     mov al, pozadina
-    clsColor al
+    cls_color al
     
     ; racunanje ugla kazaljki na osnovu sistemskog vremena
     ; ch:cl:dh - hh:mm:ss
@@ -1261,6 +1214,6 @@ start:
     
     kraj_simulacije:
         cls
-        krajPrograma
+        kraj_programa
 code ends
 end start
